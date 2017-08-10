@@ -1,6 +1,0 @@
-{
-    "name": "gatorv/simple-http",
-    "require": {
-        "ext-curl": "*"
-    }
-}
