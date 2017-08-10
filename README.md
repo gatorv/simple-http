@@ -1,1 +1,4 @@
-Simple PHP Http Request Library using cURL
+SimpleHttpRequest Class
+================
+
+Simple PHP Http Request Wrapper using cURL under the hood.
