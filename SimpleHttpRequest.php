@@ -13,6 +13,11 @@ class SimpleHttpRequest {
      */
     private $mobile_agent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25';
     /**
+     * The active user agent
+     * @var string
+     */
+    private $user_agent;
+    /**
      * Request headers array to send
      * @var array
      */
@@ -27,6 +32,31 @@ class SimpleHttpRequest {
      * @var array
      */
     private $options;
+    /**
+     * The number of redirects to follow or 0 to disable
+     * @var int
+     */
+    private $redirects;
+    /**
+     * The Proxy to use
+     * @var string
+     */
+    private $proxy;
+    /**
+     * The proxy type to use, can be one of:
+     * - CURLPROXY_HTTP
+     * - CURLPROXY_SOCKS4
+     * - CURLPROXY_SOCKS5
+     * - CURLPROXY_SOCKS4A
+     * - CURLPROXY_SOCKS5_HOSTNAME
+     * @var int
+     */
+    private $proxy_type;
+    /**
+     * Enables or disables the SSL Verification
+     * @var boolean
+     */
+    private $verifySSL;
 
     /**
      * Creates a new SimpleHttpRequest object with the supplied options
@@ -38,8 +68,8 @@ class SimpleHttpRequest {
         $this->options = $options;
 
         $this->initCurl();
-        $this->parseOptions();
         $this->useDesktopAgent();
+        $this->parseOptions();
     }
 
     /**
@@ -47,7 +77,7 @@ class SimpleHttpRequest {
      * @return void
      */
     public function useDesktopAgent() {
-        curl_setopt($this->ch, CURLOPT_USERAGENT, $this->desktop_agent);
+        $this->user_agent = $this->desktop_agent;
     }
 
     /**
@@ -55,7 +85,23 @@ class SimpleHttpRequest {
      * @return void
      */
     public function useMobileAgent() {
-        curl_setopt($this->ch, CURLOPT_USERAGENT, $this->mobile_agent);
+        $this->user_agent = $this->mobile_agent;
+    }
+
+    /**
+     * Sets the user Agent to a custom string
+     * @param String $agent The user Agent for the request
+     */
+    public function setUserAgent($agent) {
+        $this->user_agent = $agent;
+    }
+
+    /**
+     * Returns the active user agent
+     * @return String
+     */
+    public function getUserAgent() {
+        return $this->user_agent;
     }
 
     /**
@@ -64,6 +110,14 @@ class SimpleHttpRequest {
      */
     public function resetHeaders() {
         $this->request_headers = [];
+    }
+
+    /**
+     * Returns the Request Headers
+     * @return array
+     */
+    public function getHeaders() {
+        return $this->request_headers;
     }
 
     /**
@@ -88,57 +142,39 @@ class SimpleHttpRequest {
     }
 
     /**
-     * Starts the cURL resource
-     * @return void
-     */
-    private function initCurl() {
-        $this->ch = curl_init();
-
-        // Default Settings
-        curl_setopt($this->ch, CURLOPT_RETURNTRANSFER, 1);
-    }
-
-    /**
-     * Parses the Options of this class
-     * @return void
-     */
-    private function parseOptions() {
-        foreach ($this->options as $option => $value) {
-            switch ($option) {
-            case 'redirects':$this->followRedirects($value);
-                break;
-            case 'proxy':$this->setProxy($value);
-                break;
-            case 'ssl':$this->verifySSL($value);
-                break;
-            default:throw new \BadFunctionCallException('Unknown option: ' . $option);
-            }
-        }
-    }
-
-    /**
      * Follows a Location header $num times
      * @param $num The number of times to follow redirects
      * @return void
      */
-    public function followRedirects($num = 2) {
-        if ($num == 0) {
-            curl_setopt($this->ch, CURLOPT_FOLLOWLOCATION, 0);
-            curl_setopt($this->ch, CURLOPT_MAXREDIRS, 0);
-        } else {
-            curl_setopt($this->ch, CURLOPT_FOLLOWLOCATION, 1);
-            curl_setopt($this->ch, CURLOPT_MAXREDIRS, $num);
-        }
+    public function setFollowRedirects($num = 2) {
+        $this->redirects = $num;
+    }
+
+    /**
+     * Returns the number of redirects
+     * @return int
+     */
+    public function getFollowRedirects() {
+        return $this->redirects;
     }
 
     /**
      * Sets a HTTP Proxy
      * @param string $proxy The full proxy with port
+     * @param int $type The type of proxy see @$proxy
      * @return void
      */
-    public function setProxy($proxy) {
-        curl_setopt($this->ch, CURLOPT_PROXY, $this->proxy);
-        curl_setopt($this->ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+    public function setProxy($proxy, $type = CURLPROXY_HTTP) {
+        $this->proxy = $proxy;
+        $this->proxy_type = $type;
+    }
+
+    /**
+     * Return the proxy and type
+     * @return array The proxy and type
+     */
+    public function getProxy() {
+        return [$this->proxy, $this->proxy_type];
     }
 
     /**
@@ -146,8 +182,27 @@ class SimpleHttpRequest {
      * @param boolean $verify To verify or not, default to true
      * @return void
      */
-    public function verifySSL($verify = true) {
-        curl_setopt($this->ch, CURLOPT_SSL_VERIFYPEER, $verify);
+    public function setVerifySSL($verify = true) {
+        $this->verifySSL = $verify;
+    }
+
+    /**
+     * Returns the SSL Verification status
+     * @return boolean
+     */
+    public function getVerifySSL() {
+        return $this->verifySSL;
+    }
+
+    /**
+     * Sets another not mapped option to cURL, see PHP Documentaion
+     *
+     * @codeCoverageIgnore
+     * @param mixed $option
+     * @param mixed $value 
+     */
+    public function setCurlOpt($option, $value) {
+        curl_setopt($this->ch, $option, $value);
     }
 
     /**
@@ -178,11 +233,59 @@ class SimpleHttpRequest {
     }
 
     /**
+     * Starts the cURL resource
+     *
+     * @codeCoverageIgnore
+     * @return void
+     */
+    protected function initCurl() {
+        $this->ch = curl_init();
+
+        // Default Settings
+        curl_setopt($this->ch, CURLOPT_RETURNTRANSFER, 1);
+    }
+
+    /**
+     * Parses the Options of this class
+     * @return void
+     */
+    protected function parseOptions() {
+        foreach ($this->options as $option => $value) {
+            switch ($option) {
+            case 'redirects': $this->setFollowRedirects($value);
+                break;
+            case 'proxy': $this->setProxy($value);
+                break;
+            case 'ssl': $this->setVerifySSL($value);
+                break;
+            case 'useragent': $this->setUserAgent($value);
+                break;
+            default: throw new \BadFunctionCallException('Unknown option: ' . $option);
+            }
+        }
+    }
+
+    /**
      * Private function to process the request
      * @return array with response
      */
-    private function makeRequest() {
+    protected function makeRequest() {
+        if ($this->redirects == 0) {
+            curl_setopt($this->ch, CURLOPT_FOLLOWLOCATION, 0);
+            curl_setopt($this->ch, CURLOPT_MAXREDIRS, 0);
+        } else {
+            curl_setopt($this->ch, CURLOPT_FOLLOWLOCATION, 1);
+            curl_setopt($this->ch, CURLOPT_MAXREDIRS, $this->redirects);
+        }
+
+        if (!empty($this->proxy)) {
+            curl_setopt($this->ch, CURLOPT_PROXY, $this->proxy);
+            curl_setopt($this->ch, CURLOPT_PROXYTYPE, $this->proxy_type);
+        }
+
+        curl_setopt($this->ch, CURLOPT_USERAGENT, $this->user_agent);
         curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->request_headers);
+
         $headers = [];
         curl_setopt($this->ch, CURLOPT_HEADERFUNCTION, function ($curl, $header) use (&$headers) {
             $len = strlen($header);
@@ -192,11 +295,17 @@ class SimpleHttpRequest {
 
         $body = curl_exec($this->ch);
 
-        return [$headers, $body];
+        if (curl_errno($this->ch) === 0) {
+            return [$headers, $body];
+        }
+
+        throw new \RuntimeException(curl_error($this->ch));
     }
 
     /**
      * Closes the cURL resource
+     *
+     * @codeCoverageIgnore
      * @return void
      */
     public function __destruct() {
